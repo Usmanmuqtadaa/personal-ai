@@ -1,3 +1,4 @@
+import { instantAnswer } from './instant.js';
 import { CreateMLCEngine, prebuiltAppConfig } from '@mlc-ai/web-llm';
 
 // On older Intel graphics, WebGPU may reset even for tiny models. CPU via Ollama is default.
@@ -7,12 +8,13 @@ const browserModels = [
 ];
 const supported = new Set(prebuiltAppConfig.model_list.map((m) => m.model_id));
 export const MODEL_CHOICES = [
+  { id: 'instant:tools', label: 'Instant Tools · Vercel compatible (no model)' },
   { id: 'ollama:qwen2.5:1.5b', label: 'CPU · Faster & more stable (recommended)' },
   { id: 'ollama:qwen2.5:0.5b', label: 'CPU · Tiny (fastest, less capable)' },
   { id: 'ollama:qwen2.5:3b', label: 'CPU · Better writing (slower)' },
   ...browserModels.filter(([id]) => supported.has(id)).map(([id, label]) => ({ id, label }))
 ];
-export const DEFAULT_MODEL = MODEL_CHOICES[0].id;
+export const DEFAULT_MODEL = (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) ? 'ollama:qwen2.5:1.5b' : 'instant:tools';
 let engine = null;
 let engineId = '';
 let initializing = null;
@@ -38,6 +40,7 @@ async function cpuRequest(path, options = {}) {
 }
 
 export async function initializeAI(modelId, onProgress = () => {}) {
+  if (modelId === 'instant:tools') return true;
   if (isCPU(modelId)) {
     onProgress({ percent: 0, text: 'Connecting to local CPU AI…' });
     const res = await cpuRequest('tags');
@@ -67,7 +70,7 @@ async function cpuStream(modelId, messages, onToken, onProgress) {
   const res = await cpuRequest('chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: modelId.slice(7), messages, stream: true,
-      options: { temperature: 0.35, num_ctx: 4096, num_predict: 700, num_thread: 6 } })
+      options: { temperature: 0.35, num_ctx: 4096, num_predict: 450, num_thread: 6 } })
   });
   if (!res.body) throw new Error('Streaming is unavailable.');
   const reader = res.body.getReader();
@@ -91,7 +94,12 @@ async function cpuStream(modelId, messages, onToken, onProgress) {
   return text.trim();
 }
 
-export async function streamReply({ modelId, messages, onToken, onProgress }) {
+export async function streamReply({ modelId, messages, onToken, onProgress, files = [], mode = 'general', sources = [] }) {
+  if (modelId === 'instant:tools') {
+    const answer = instantAnswer(messages[messages.length - 1]?.content || '', files, mode, sources);
+    onToken(answer);
+    return answer;
+  }
   if (isCPU(modelId)) return cpuStream(modelId, messages, onToken, onProgress);
   const active = await initializeAI(modelId, onProgress);
   const stream = await active.chat.completions.create({ messages, temperature: 0.4, max_tokens: 700, stream: true });
@@ -107,7 +115,7 @@ const rules = `You are Usman's Personal AI, a helpful study, writing and project
 Answer straightforward questions directly and briefly. Use clear, natural, original language.
 For longer assignments, give useful structure and explain your reasoning simply.
 Accuracy matters more than fluency: say when you do not know, do not invent sources, findings, DOI identifiers or quotations.
-When sources are supplied, cite only those sources. A Crossref result gives metadata, not proof that you read the full paper.
+If the user attaches a document and its text appears in the message, work from that text and never ask for it again. If only an excerpt is available, say so. When sources are supplied, cite only those sources. A Crossref result gives metadata, not proof that you read the full paper.
 Never claim a zero plagiarism or zero AI-detection score. Follow user instructions and academic integrity requirements.`;
 const modes = {
   general: 'Help with the request. For simple greetings, reply in one sentence.',

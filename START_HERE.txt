@@ -1,0 +1,24 @@
+USMAN'S PERSONAL AI - NEW COMPLETE RELEASE
+
+TO REPLACE YOUR OLD VERCEL WEBSITE ON THE SAME DOMAIN:
+1. Extract this ZIP. Use the CONTENTS of the usmans-personal-ai folder.
+2. In GitHub Desktop, clone your EXISTING project repo.
+3. Copy the extracted contents into the cloned repo, replacing old files.
+4. Do not copy node_modules, dist, .env or .vercel. Never remove .git.
+5. Commit changes and Push origin.
+6. Vercel automatically redeploys your EXISTING project to the SAME URL.
+
+TO RUN ON YOUR PC WITH REAL CPU AI:
+1. Keep Ollama running (you already installed qwen2.5:1.5b).
+2. Open this new folder in VS Code.
+3. npm.cmd install
+4. npm.cmd run dev
+5. Open http://localhost:5173 (not your Vercel website).
+6. Select CPU - Faster & more stable in the model dropdown.
+
+ON VERCEL WITHOUT API KEYS:
+Use Instant Tools. It can summarize readable file text, create outlines and export files,
+but it is NOT a generative model and cannot answer every question.
+Ollama runs only on your PC; it is NOT included in Vercel hosting.
+
+For details, see README.md.

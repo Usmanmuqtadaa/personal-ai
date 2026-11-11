@@ -78,7 +78,13 @@ export async function readAttachment(file, onProgress = () => {}) {
   } else {
     throw new Error(`.${ext} is not a supported upload. Use PDF, DOCX, PPTX, Excel, text or an image with text.`);
   }
-  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: file.name, size: file.size, text: truncate(String(text || '').trim()) };
+  const extracted = String(text || '').trim();
+  const warning = extracted.includes('Image-based PDF OCR is not yet supported')
+    ? 'This PDF contains scanned images. This version cannot read scanned PDF pages. Convert it to a searchable PDF using OCR, then upload it again.'
+    : extracted.length < 30
+      ? 'Almost no readable text was found in this file. Try a searchable PDF or a DOCX version.'
+      : '';
+  return { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: file.name, size: file.size, text: truncate(extracted), readable: !warning, warning };
 }
 
 function cleanMarkdown(text) {
