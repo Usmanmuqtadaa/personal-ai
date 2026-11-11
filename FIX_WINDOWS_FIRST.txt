@@ -1,0 +1,45 @@
+USMAN'S PERSONAL AI - WINDOWS FIX (NO GPU CRASHES)
+==================================================
+
+Your Intel UHD 620 GPU cannot reliably run the existing WebLLM model.
+This version defaults to free local Ollama AI on your CPU. NO API KEY.
+
+1. Install Ollama for Windows: https://ollama.com/download/windows
+   Open Ollama after installing.
+
+2. Open Command Prompt (Windows key, type cmd, press Enter), then type:
+
+   ollama pull qwen2.5:1.5b
+
+   The model downloads once. It is about 1 GB. Wait until completed.
+
+3. Extract the updated ZIP file. Open the extracted project folder
+   in Visual Studio Code, open Terminal, and type:
+
+   npm install
+   npm run dev
+
+4. Open http://localhost:5173 in your browser.
+   Select "CPU - Faster & more stable (recommended)" at the bottom.
+   Try: "Hello! Reply in one sentence."
+
+5. Ask your questions, attach files, and export answers.
+
+IMPORTANT:
+- On your computer, with 16 GB RAM (80% already in use), close other apps
+  first. CPU responses will not always be instant. The 0.5b option is faster
+  but not as good at complicated research or writing.
+- Your existing Vercel website cannot directly connect to Ollama on your PC.
+  This CPU version runs locally at http://localhost:5173 instead.
+- Publishing genuinely fast AI for EVERY visitor, without them installing
+  anything, requires hosting an AI inference service and paying for computing
+  or using a provider's available free quota. A Vercel static site cannot
+  perform server-side large model inference by itself.
+- If you update GitHub with this ZIP, the Vercel page still builds but the
+  CPU option cannot function remotely. Do not expect CPU mode on Vercel.
+- Results from small local models must be checked, particularly academic facts.
+
+TROUBLESHOOTING:
+If message says Ollama not running: open Ollama and restart npm run dev.
+If model not installed: run ollama pull qwen2.5:1.5b again.
+If very slow: try "CPU - Tiny" after running ollama pull qwen2.5:0.5b.

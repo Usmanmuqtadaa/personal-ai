@@ -1,6 +1,15 @@
+# IMPORTANT: Windows CPU Fix (November 2026)
+
+**For an Intel UHD 620 computer, read `FIX_WINDOWS_FIRST.txt` before anything else.**
+The updated app now defaults to Ollama CPU inference on `http://localhost:5173`, avoiding the reported WebGPU device-removed crash. This requires **free Ollama installed and running locally**, plus `ollama pull qwen2.5:1.5b`. Your public **Vercel site cannot access the Ollama model on your PC** by default. WebLLM is still listed as an optional experimental browser-GPU choice but may crash on older Intel GPUs.
+
+No API key is needed, but no local CPU model can guarantee near-instant or perfectly accurate complex research answers. You can continue using the original Vercel browser-GPU mode on supported hardware, or use the improved local CPU setup for this computer.
+
+---
+
 # Usman's Personal AI
 
-An installable, Vercel-ready AI workspace for assignments, research, project planning and file creation. **No OpenAI API key, payment card or other AI API key is required.** Text generation runs in the user's browser through [WebLLM](https://github.com/mlc-ai/web-llm) and a downloadable open-weight model. Vercel only hosts the website and a small, key-free research lookup function.
+An installable, Vercel-ready AI workspace for assignments, research, project planning and file creation. **No OpenAI API key, payment card or other AI API key is required.** On Vercel, text generation runs in the user's browser through [WebLLM](https://github.com/mlc-ai/web-llm) and a downloadable open-weight model. Vercel only hosts the website and a small, key-free research lookup function.
 
 ## Features
 

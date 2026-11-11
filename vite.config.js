@@ -29,5 +29,6 @@ const localResearchAPI = () => ({
 
 export default defineConfig({
   plugins: [react(), localResearchAPI()],
+  server: { proxy: { '/api/local-ai': { target: 'http://127.0.0.1:11434', changeOrigin: true, rewrite: (path) => path.replace(/^\/api\/local-ai/, '/api') } } },
   build: { target: 'es2022', chunkSizeWarningLimit: 1700 }
 });

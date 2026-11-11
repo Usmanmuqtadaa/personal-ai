@@ -1,88 +1,124 @@
 import { CreateMLCEngine, prebuiltAppConfig } from '@mlc-ai/web-llm';
 
-const wishlist = [
-  ['Qwen2.5-0.5B-Instruct-q4f16_1-MLC', 'Compact · lower memory'],
-  ['Qwen2.5-1.5B-Instruct-q4f16_1-MLC', 'Balanced · recommended'],
-  ['Llama-3.2-3B-Instruct-q4f16_1-MLC', 'Stronger · more memory']
+// On older Intel graphics, WebGPU may reset even for tiny models. CPU via Ollama is default.
+const browserModels = [
+  ['Qwen2.5-0.5B-Instruct-q4f16_1-MLC', 'Browser GPU · small (experimental)'],
+  ['Qwen2.5-1.5B-Instruct-q4f16_1-MLC', 'Browser GPU · medium (experimental)']
 ];
-const listed = new Set(prebuiltAppConfig.model_list.map((model) => model.model_id));
-export const MODEL_CHOICES = wishlist.filter(([id]) => listed.has(id)).map(([id, label]) => ({ id, label }));
-if (!MODEL_CHOICES.length) {
-  const other = prebuiltAppConfig.model_list.find((model) => /instruct/i.test(model.model_id));
-  if (other) MODEL_CHOICES.push({ id: other.model_id, label: 'Available local model' });
-}
-export const DEFAULT_MODEL = MODEL_CHOICES.find((model) => model.id.includes('1.5B'))?.id || MODEL_CHOICES[0]?.id || '';
-
-let currentEngine = null;
-let currentId = '';
+const supported = new Set(prebuiltAppConfig.model_list.map((m) => m.model_id));
+export const MODEL_CHOICES = [
+  { id: 'ollama:qwen2.5:1.5b', label: 'CPU · Faster & more stable (recommended)' },
+  { id: 'ollama:qwen2.5:0.5b', label: 'CPU · Tiny (fastest, less capable)' },
+  { id: 'ollama:qwen2.5:3b', label: 'CPU · Better writing (slower)' },
+  ...browserModels.filter(([id]) => supported.has(id)).map(([id, label]) => ({ id, label }))
+];
+export const DEFAULT_MODEL = MODEL_CHOICES[0].id;
+let engine = null;
+let engineId = '';
 let initializing = null;
+const isCPU = (model) => model.startsWith('ollama:');
 
 export async function deviceSupportsAI() {
   if (!navigator.gpu) return false;
-  try { return Boolean(await navigator.gpu.requestAdapter()); }
-  catch { return false; }
+  try { return Boolean(await navigator.gpu.requestAdapter()); } catch { return false; }
+}
+
+async function cpuRequest(path, options = {}) {
+  let res;
+  try { res = await fetch(`/api/local-ai/${path}`, options); }
+  catch { throw new Error('Local AI server is not reachable. Open this project locally with npm run dev, and install Ollama.'); }
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    if (res.status === 404 && !body.includes('model')) throw new Error('CPU AI works only on the local computer, not directly on Vercel. Run npm run dev on your PC.');
+    if (res.status === 503 || res.status === 502) throw new Error('Ollama is not running. Open Ollama on your computer, then retry.');
+    if (body.includes('model') && body.includes('not found')) throw new Error('Model not installed. Run: ollama pull qwen2.5:1.5b');
+    throw new Error(`Local AI error (${res.status}): ${body.slice(0, 240)}`);
+  }
+  return res;
 }
 
 export async function initializeAI(modelId, onProgress = () => {}) {
-  if (!modelId) throw new Error('No compatible built-in model is available in this version.');
-  if (currentEngine && currentId === modelId) return currentEngine;
-  if (initializing) {
-    await initializing;
-    if (currentEngine && currentId === modelId) return currentEngine;
+  if (isCPU(modelId)) {
+    onProgress({ percent: 0, text: 'Connecting to local CPU AI…' });
+    const res = await cpuRequest('tags');
+    const data = await res.json();
+    const requested = modelId.slice('ollama:'.length);
+    if (!data.models?.some((m) => m.name === requested || m.name.startsWith(`${requested}:`))) {
+      throw new Error(`Install the selected model first. In Command Prompt, run: ollama pull ${requested}`);
+    }
+    return true;
   }
+  if (engine && engineId === modelId) return engine;
+  if (initializing) await initializing;
+  if (engine && engineId === modelId) return engine;
   initializing = (async () => {
-    if (!await deviceSupportsAI()) {
-      throw new Error('WebGPU is unavailable. Use a recent Chrome or Edge browser on a device with WebGPU graphics support.');
-    }
-    if (currentEngine) {
-      await currentEngine.unload();
-      currentEngine = null;
-    }
-    const engine = await CreateMLCEngine(modelId, {
-      initProgressCallback: (progress) => onProgress({ percent: Math.round((progress.progress || 0) * 100), text: progress.text || 'Loading the AI model…' })
+    if (!await deviceSupportsAI()) throw new Error('WebGPU is unavailable. Use CPU mode on your local computer instead.');
+    if (engine) { await engine.unload(); engine = null; engineId = ''; }
+    engine = await CreateMLCEngine(modelId, {
+      initProgressCallback: (p) => onProgress({ percent: Math.round((p.progress || 0) * 100), text: p.text || 'Loading model…' })
     });
-    currentEngine = engine;
-    currentId = modelId;
-    return engine;
+    engineId = modelId;
   })();
-  try { return await initializing; }
-  finally { initializing = null; }
+  try { await initializing; return engine; } finally { initializing = null; }
+}
+
+async function cpuStream(modelId, messages, onToken, onProgress) {
+  onProgress({ percent: 0, text: 'Connecting to CPU AI…' });
+  const res = await cpuRequest('chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: modelId.slice(7), messages, stream: true,
+      options: { temperature: 0.35, num_ctx: 4096, num_predict: 700, num_thread: 6 } })
+  });
+  if (!res.body) throw new Error('Streaming is unavailable.');
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = ''; let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let part;
+      try { part = JSON.parse(line); } catch { continue; }
+      if (part.error) throw new Error(part.error);
+      const delta = part.message?.content || '';
+      if (delta) { text += delta; onToken(text); }
+    }
+  }
+  return text.trim();
 }
 
 export async function streamReply({ modelId, messages, onToken, onProgress }) {
-  const engine = await initializeAI(modelId, onProgress);
-  const stream = await engine.chat.completions.create({
-    messages,
-    temperature: 0.65,
-    max_tokens: 1500,
-    stream: true
-  });
+  if (isCPU(modelId)) return cpuStream(modelId, messages, onToken, onProgress);
+  const active = await initializeAI(modelId, onProgress);
+  const stream = await active.chat.completions.create({ messages, temperature: 0.4, max_tokens: 700, stream: true });
   let full = '';
-  for await (const chunk of stream) {
-    const next = chunk.choices?.[0]?.delta?.content || '';
-    if (next) { full += next; onToken(full); }
+  for await (const part of stream) {
+    const token = part.choices?.[0]?.delta?.content || '';
+    if (token) { full += token; onToken(full); }
   }
   return full.trim();
 }
 
-const baseRules = `You are Usman's Personal AI, a practical writing and study assistant.
-Write in clear, natural, original language. Vary rhythm naturally, prioritize accuracy, and do not add filler or stock chatbot phrases.
-Create genuinely new wording, not copied passages. You cannot guarantee detector scores or that any draft is plagiarism-free; never claim otherwise.
-Support responsible academic learning. Do not invent experiments, interviews, collected data, page numbers, quotations, references, DOIs, journal titles, or source details. Clearly label hypothetical examples and placeholders.
-If sources are provided, cite only those sources, with URLs/DOIs if appropriate. A bibliographic metadata result does not mean you have read the full paper. Say when source verification is needed.
-Follow the user's requested structure, length, format, and audience. When the prompt is underspecified, make sensible assumptions and produce a usable draft. Do not refer to yourself as an AI unless relevant.`;
-
-const modeRules = {
-  general: 'Answer the request helpfully. Use concise practical explanations unless the user asks for a longer response.',
-  assignment: 'Produce a well-organized assignment draft with an informative title, introduction, meaningful sections, conclusion and references only when backed by supplied or verified sources. Avoid invented citations. Include an originality/checking note only when needed.',
-  research: 'Explain the research question, what the available sources actually support, a synthesis, limitations, and potential next steps. Treat Crossref results as bibliographic metadata only, not full-text findings. Cite only the provided sources. Make uncertainty explicit.',
-  presentation: 'Create a presentation outline in this exact format: ## Slide 1: [title], then 3 to 5 short bullets under each slide, continue for a suitable number of slides (default 8). Include a final sources slide only if genuine sources are available. Make every slide focused.',
-  project: 'Develop a practical project plan with goal, deliverables, stages, milestones, risks and quality checks. If the user asks for code, provide working code or a clear implementation path rather than promises.',
-  summary: 'Summarize the provided material accurately without making up details. Use structured, easy-to-understand headings and key points.',
-  humanize: 'Rewrite the supplied text in clear, natural, readable language. Preserve its meaning, evidence, original quotations and existing accurate citations. Do not fabricate facts, attempt to defeat AI detectors, or pretend the rewrite was produced without assistance.'
+const rules = `You are Usman's Personal AI, a helpful study, writing and project assistant.
+Answer straightforward questions directly and briefly. Use clear, natural, original language.
+For longer assignments, give useful structure and explain your reasoning simply.
+Accuracy matters more than fluency: say when you do not know, do not invent sources, findings, DOI identifiers or quotations.
+When sources are supplied, cite only those sources. A Crossref result gives metadata, not proof that you read the full paper.
+Never claim a zero plagiarism or zero AI-detection score. Follow user instructions and academic integrity requirements.`;
+const modes = {
+  general: 'Help with the request. For simple greetings, reply in one sentence.',
+  assignment: 'Create a structured, original assignment draft. Do not invent references.',
+  research: 'Ground claims in provided verified lookup results, identify uncertainties, and distinguish metadata from full texts.',
+  presentation: 'Output slides as ## Slide 1: Title with 3–5 concise bullets per slide.',
+  project: 'Provide realistic milestones, deliverables, risks and working implementation steps.',
+  summary: 'Summarize only the supplied content without hallucinating missing details.',
+  humanize: 'Improve flow and clarity while keeping original meaning and authentic citations.'
 };
-
 export function systemPrompt(mode, sources = []) {
-  const sourceSection = sources.length ? `\nVERIFIED PUBLIC LOOKUP RESULTS (some are metadata only):\n${sources.map((s, i) => `[${i + 1}] ${s.title} | ${s.authors.join(', ')} | ${s.year || 'n.d.'} | ${s.journal} | ${s.url}\nDescription: ${s.description}`).join('\n')}\nDo not cite unlisted sources or treat paper descriptions as paper findings.` : '\nNo external sources were supplied. Do not fabricate citations.';
-  return `${baseRules}\n\nTASK MODE: ${modeRules[mode] || modeRules.general}${sourceSection}`;
+  const refs = sources.length ? '\nPUBLIC LOOKUP RESULTS (metadata and summaries only):\n' + sources.map((s, i) => `[${i+1}] ${s.title} | ${s.authors?.join(', ') || ''} | ${s.year || ''} | ${s.url}\n${s.description || ''}`).join('\n') : '\nNo verified references provided. Do not invent any.';
+  return `${rules}\nTASK: ${modes[mode] || modes.general}\n${refs}`;
 }
