@@ -1,0 +1,35 @@
+USMAN'S PERSONAL AI | QUICK START
+=================================
+
+NO AI API KEY IS NEEDED.
+
+HOST IT ON VERCEL
+1. Extract this ZIP into a folder.
+2. Upload the folder's files to a new GitHub repository.
+   IMPORTANT: package.json must be at the root of the repo.
+3. Visit https://vercel.com and create a new project.
+4. Import your GitHub repository and choose Deploy.
+   Framework: Vite | Build: npm run build | Output: dist
+5. Open the new website in a modern WebGPU-capable Chrome or Edge browser.
+6. Click "Load AI" and allow the local AI model to download.
+7. Write an assignment, research a topic, make slides or upload files.
+8. Select PDF, DOCX, PPTX, XLSX, or another format in the Export menu.
+
+RUN ON YOUR COMPUTER
+Install Node.js 20 or later, then open a terminal in the folder:
+
+    npm install
+    npm run dev
+
+Open the localhost address shown in the terminal.
+
+IMPORTANT
+The local AI runs on each visitor's graphics hardware.
+It needs WebGPU and downloads large model files. It does not work
+on all phones, older computers, or browsers.
+Public research uses Crossref/Wikipedia metadata only, not the complete
+contents of every scholarly publication. Always check factual claims,
+citations, and academic requirements. No plagiarism or AI-detector
+score can be guaranteed.
+
+See README.md for supported formats, privacy details, and limitations.
