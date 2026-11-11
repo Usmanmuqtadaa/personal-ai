@@ -263,3 +263,8 @@ a { color: inherit; }
   .export-title span { display: none; }
   .model-banner-icon { display: none; }
 }
+
+/* Password control for private remote Ollama */
+.online-password-row{display:flex;align-items:center;gap:10px;padding:8px 14px;margin-bottom:8px;border-radius:10px;background:#f4f3ff;color:#5652a3;font-size:12px;flex-wrap:wrap}
+.online-password-row input{padding:9px 12px;border:1px solid #c7c8e5;border-radius:8px;min-width:190px;max-width:340px;flex:1;background:white;color:#222}
+.online-password-row span{color:#6b7081}

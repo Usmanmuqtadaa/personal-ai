@@ -8,13 +8,14 @@ const browserModels = [
 ];
 const supported = new Set(prebuiltAppConfig.model_list.map((m) => m.model_id));
 export const MODEL_CHOICES = [
-  { id: 'instant:tools', label: 'Instant Tools · Vercel compatible (no model)' },
+  { id: 'online:ollama', label: 'Online AI · PC via secure tunnel (Vercel)' },
+  { id: 'instant:tools', label: 'Instant Tools · templates only' },
   { id: 'ollama:qwen2.5:1.5b', label: 'CPU · Faster & more stable (recommended)' },
   { id: 'ollama:qwen2.5:0.5b', label: 'CPU · Tiny (fastest, less capable)' },
   { id: 'ollama:qwen2.5:3b', label: 'CPU · Better writing (slower)' },
   ...browserModels.filter(([id]) => supported.has(id)).map(([id, label]) => ({ id, label }))
 ];
-export const DEFAULT_MODEL = (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) ? 'ollama:qwen2.5:1.5b' : 'instant:tools';
+export const DEFAULT_MODEL = (typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname)) ? 'ollama:qwen2.5:1.5b' : 'online:ollama';
 let engine = null;
 let engineId = '';
 let initializing = null;
@@ -40,7 +41,7 @@ async function cpuRequest(path, options = {}) {
 }
 
 export async function initializeAI(modelId, onProgress = () => {}) {
-  if (modelId === 'instant:tools') return true;
+  if (modelId === 'instant:tools' || modelId === 'online:ollama') return true;
   if (isCPU(modelId)) {
     onProgress({ percent: 0, text: 'Connecting to local CPU AI…' });
     const res = await cpuRequest('tags');
@@ -94,12 +95,43 @@ async function cpuStream(modelId, messages, onToken, onProgress) {
   return text.trim();
 }
 
-export async function streamReply({ modelId, messages, onToken, onProgress, files = [], mode = 'general', sources = [] }) {
+async function onlineStream(messages, password, onToken, onProgress) {
+  if (!password?.trim()) throw new Error('Enter your website AI password above the message box.');
+  onProgress({ percent: 0, text: 'Connecting securely to your PC…' });
+  let response;
+  try {
+    response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-App-Password': password.trim() },
+      body: JSON.stringify({ messages }),
+    });
+  } catch {
+    throw new Error('Could not reach the website AI endpoint. Check your Vercel deployment.');
+  }
+  if (!response.ok) {
+    const details = await response.json().catch(() => ({}));
+    throw new Error(details.error || `Online AI request failed (${response.status}).`);
+  }
+  if (!response.body) throw new Error('No response stream received.');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+    onToken(text);
+  }
+  return text.trim();
+}
+
+export async function streamReply({ modelId, messages, onToken, onProgress, files = [], mode = 'general', sources = [], password = '' }) {
   if (modelId === 'instant:tools') {
     const answer = instantAnswer(messages[messages.length - 1]?.content || '', files, mode, sources);
     onToken(answer);
     return answer;
   }
+  if (modelId === 'online:ollama') return onlineStream(messages, password, onToken, onProgress);
   if (isCPU(modelId)) return cpuStream(modelId, messages, onToken, onProgress);
   const active = await initializeAI(modelId, onProgress);
   const stream = await active.chat.completions.create({ messages, temperature: 0.4, max_tokens: 700, stream: true });

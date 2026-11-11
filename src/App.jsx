@@ -30,7 +30,7 @@ const STARTERS = [
 ];
 
 const STORAGE_KEY = 'usmans-personal-ai-chats-v1';
-const newThread = () => ({ id: crypto.randomUUID(), title: 'New conversation', createdAt: Date.now(), messages: [] });
+const newThread = () => ({ id: (globalThis.crypto?.randomUUID?.() || `id-${Date.now()}-${Math.random().toString(36).slice(2)}`), title: 'New conversation', createdAt: Date.now(), messages: [] });
 const loadThreads = () => {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -73,7 +73,7 @@ function Sidebar({ threads, activeId, onSelect, onNew, onDelete, collapsedMobile
       </div>
     </div>
     <div className="sidebar-bottom">
-      <div className="sidebar-privacy"><div className="privacy-icon"><ShieldCheck size={19} /></div><div><strong>Private by design</strong><span>Processing depends on selected mode</span></div></div>
+      <div className="sidebar-privacy"><div className="privacy-icon"><ShieldCheck size={19} /></div><div><strong>Protect your access</strong><span>Processing depends on selected mode</span></div></div>
       <div className="sidebar-copyright">Built for learning and creating <span>✦</span></div>
     </div>
   </aside>;
@@ -96,7 +96,7 @@ function SourcePanel({ sources, warnings, attachments, onRemoveFile, onClose, mo
         <div className="panel-card-head"><span className="panel-icon violet"><Paperclip size={17} /></span><div><strong>Attached files</strong><span>Use documents as context</span></div></div>
         {attachments.length ? <div className="panel-files">{attachments.map((file) => <div key={file.id} className="panel-file"><FileText size={16} /><span title={file.name}>{file.name}</span><button title="Remove file" onClick={() => onRemoveFile(file.id)}><X size={13} /></button></div>)}</div> : <div className="empty-panel small"><p>Upload Word, PDF, Excel, PowerPoint, text files or images with English text.</p></div>}
       </div>
-      <div className="panel-help"><div className="help-icon"><ShieldCheck size={20} /></div><div><strong>Your work stays yours</strong><p>Instant Tools and file processing run in your browser. Local AI sends prompts to Ollama on your computer. Research searches contact public sources.</p></div></div>
+      <div className="panel-help"><div className="help-icon"><ShieldCheck size={20} /></div><div><strong>Your work stays yours</strong><p>File processing runs in your browser. Online AI messages are relayed through Vercel and Cloudflare to Ollama on your computer. Research contacts public sources.</p></div></div>
       <div className="panel-mini-tip"><WandSparkles size={15} /><span>Tip: Ask for slide-by-slide content before exporting to PowerPoint.</span></div>
     </div>
   </aside>;
@@ -127,7 +127,7 @@ function Welcome({ onStart, onLoad, modelReady, loading, progress, onChooseResea
     </button>)}</div>
     {!modelReady && <div className="model-banner">
       <div className="model-banner-icon"><Cpu size={21} /></div>
-      <div className="model-banner-text"><strong>Powered by AI on your device</strong><span>Recommended: run locally with free Ollama CPU AI. No API key or graphics card required. See FIX_WINDOWS_FIRST.txt.</span></div>
+      <div className="model-banner-text"><strong>Powered by AI on your device</strong><span>Choose Online AI for the password-protected Vercel connection or Local Ollama on this PC. A secure tunnel is required for Online AI.</span></div>
       <button disabled={loading} onClick={onLoad}>{loading ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}{loading ? `${progress}%` : 'Load AI'}</button>
     </div>}
     <div className="welcome-bottom"><ShieldCheck size={15} /> Private conversations <span>·</span> <Wifi size={15} /> Research uses public sources <span>·</span> <HardDrive size={15} /> Local file processing</div>
@@ -140,6 +140,7 @@ export default function App() {
   // Ensure the active thread points to the same saved thread collection.
   const [mode, setMode] = useState('general');
   const [modelId, setModelId] = useState(DEFAULT_MODEL);
+  const [onlinePassword, setOnlinePassword] = useState('');
   const [readyModel, setReadyModel] = useState('');
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -265,11 +266,11 @@ export default function App() {
         ...past.map((m) => ({ role: m.role, content: m.content.slice(0, 900) })),
         { role: 'user', content: `${prompt}${documentContext}` }
       ];
-      const answer = await streamReply({ modelId, messages, files, mode, sources: verified, onProgress: ({ percent, text }) => { setProgress(percent); setProgressText(text); }, onToken: (value) => { setProgressText('Writing your response…'); updateMessage(chatId, assistantMessage.id, value); } });
+      const answer = await streamReply({ modelId, messages, files, mode, sources: verified, onProgress: ({ percent, text }) => { setProgress(percent); setProgressText(text); }, onToken: (value) => { setProgressText('Writing your response…'); updateMessage(chatId, assistantMessage.id, value); }, password: onlinePassword });
       setReadyModel(modelId);
       updateMessage(chatId, assistantMessage.id, answer || 'No response was generated. Please try again with a more specific request.');
     } catch (err) {
-      updateMessage(chatId, assistantMessage.id, `**Could not complete this request.** ${err?.message || 'Unknown error'}\n\nFor local AI, start Ollama and run the app at http://localhost:5173. On Vercel, choose Instant Tools (no model) or a compatible browser model.`);
+      updateMessage(chatId, assistantMessage.id, `**Could not complete this request.** ${err?.message || 'Unknown error'}\n\nFor online AI: check your password, Cloudflare tunnel, and PC Ollama bridge. For local AI, run Ollama and open http://localhost:5173.`);
       flash('Please check the message for details.');
     } finally { setBusy(false); setProgressText(''); setProgress(0); setResearchBusy(false); }
   }
@@ -280,7 +281,7 @@ export default function App() {
     <main className="main-column">
       <header className="top-bar">
         <div className="top-left"><button className="icon-button hamburger" title="Open menu" onClick={() => setSidebarOpen(true)}><Menu size={21} /></button><span className="top-location"><span>Workspace</span><span className="top-separator">/</span><strong>{selectedMode.label}</strong></span></div>
-        <div className="top-actions"><span className="offline-chip"><span className={`chip-dot ${webgpuSupported === false ? 'dot-warning' : ''}`} />{modelId === 'instant:tools' ? 'Instant tools' : modelId.startsWith('ollama:') ? 'Local Ollama' : webgpuSupported === false ? 'GPU unsupported' : isModelReady ? 'AI ready' : 'Browser AI'}</span><button className="icon-button panel-toggle" title={panelOpen ? 'Hide workspace panel' : 'Show workspace panel'} onClick={() => setPanelOpen((v) => !v)}>{panelOpen ? <PanelRightClose size={19} /> : <PanelRightOpen size={19} />}</button></div>
+        <div className="top-actions"><span className="offline-chip"><span className={`chip-dot ${webgpuSupported === false ? 'dot-warning' : ''}`} />{modelId === 'instant:tools' ? 'Instant tools' : modelId.startsWith('ollama:') ? 'Local Ollama' : modelId === 'online:ollama' ? 'Online Ollama' : webgpuSupported === false ? 'GPU unsupported' : isModelReady ? 'AI ready' : 'Browser AI'}</span><button className="icon-button panel-toggle" title={panelOpen ? 'Hide workspace panel' : 'Show workspace panel'} onClick={() => setPanelOpen((v) => !v)}>{panelOpen ? <PanelRightClose size={19} /> : <PanelRightOpen size={19} />}</button></div>
       </header>
       <div className="chat-scroller">
         <div className={`conversation-area ${!activeThread?.messages.length ? 'conversation-empty' : ''}`}>
@@ -289,6 +290,7 @@ export default function App() {
         </div>
       </div>
       <div className="composer-wrap">
+        {modelId === 'online:ollama' && <div className="online-password-row"><ShieldCheck size={16}/><input type="password" aria-label="AI website password" autoComplete="off" placeholder="Enter your AI website password" value={onlinePassword} onChange={(e) => setOnlinePassword(e.target.value)} /><span>Only entered here; not saved in chat history.</span></div>}
         {busy && <div className="progress-banner"><LoaderCircle size={15} className="spin" /><span>{progressText || 'Working…'}</span>{progress > 0 && <strong>{progress}%</strong>}{progress > 0 && <div className="progress-track"><div style={{ width: `${progress}%` }} /></div>}</div>}
         {fileBusy && <div className="progress-banner"><LoaderCircle className="spin" size={15} /><span>{progressText || 'Reading your file…'}</span></div>}
         {attachments.length > 0 && <div className="attachment-strip">{attachments.map((file) => <span key={file.id}><FileText size={14} />{trunc(file.name, 28)}<button title="Remove" onClick={() => setAttachments((prev) => prev.filter((f) => f.id !== file.id))}><X size={13} /></button></span>)}</div>}
@@ -300,7 +302,7 @@ export default function App() {
         </form>
         <div className="composer-foot"><div className="model-select-wrap"><Cpu size={14} /><select aria-label="Local model" title="CPU AI works locally with Ollama; browser GPU is experimental" value={modelId} disabled={busy} onChange={(e) => { setModelId(e.target.value); setReadyModel(''); }}>
           {MODEL_CHOICES.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-        </select><ChevronDown className="select-arrow" size={12} /></div><span className="composer-disclaimer">Instant Tools is not a language model. Local AI requires Ollama. Verify academic work.</span></div>
+        </select><ChevronDown className="select-arrow" size={12} /></div><span className="composer-disclaimer">Online AI needs your PC, tunnel and password. Do not share your password. Verify academic work.</span></div>
         {latestAnswer && <div className="export-bar"><div className="export-title"><FileDown size={16} /><span>Download last answer</span></div><div className="export-actions"><select aria-label="Download format" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>{EXPORT_TYPES.map(({ ext, name }) => <option key={ext} value={ext}>{name} (.{ext})</option>)}</select><button onClick={() => doExport()} disabled={busy}><Download size={15} />Export</button></div></div>}
       </div>
     </main>
